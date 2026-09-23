@@ -510,8 +510,15 @@ async function scan() {
   }
 }
 
-app.get("/health", (_q, res) => res.json({ ok: true, status: state.status, version: state.version, scanRunning: state.scanRunning }));
-app.get("/status", (_q, res) => res.json(state));
+app.get("/health", (_q, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json({ ok: true, status: state.status, version: state.version, scanRunning: state.scanRunning, scans: state.scans });
+});
+app.get("/status", (_q, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json(state);
+});
+
 app.post("/api/positions/:symbol/close", async (req, res) => {
   const symbol = String(req.params.symbol || "").toUpperCase();
   const p = state.positions[symbol];
@@ -528,9 +535,9 @@ app.post("/api/positions/:symbol/close", async (req, res) => {
 
 app.post("/api/positions/close-all", async (_req, res) => {
   const positions = Object.values(state.positions);
-  if (!positions.length) return res.json({ ok: true, closed: [], message: "No hay posiciones abiertas" });
+  if (!positions.length) return res.json({ ok: true, closed: [], errors: [], message: "No hay posiciones abiertas" });
+  state.entryPauseUntil = Date.now() + Math.max(CFG.pollMs * 2, 30000);
   const closed = [], errors = [];
-  state.entryPauseUntil = Date.now() + CFG.pollMs * 2;
   for (const p of positions) {
     if (!state.positions[p.symbol]) continue;
     try {
@@ -545,26 +552,70 @@ app.post("/api/positions/close-all", async (_req, res) => {
   res.json({ ok: errors.length === 0, closed, errors, realizedPnl: state.realizedPnl });
 });
 
-
 app.get("/", (_q, res) => {
-  res.send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TIERRA · REAL-TIME MARKET INTELLIGENCE</title><style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#080d13;color:#edf2f7;margin:0;padding:18px}h1{font-size:30px}.card{background:#111a24;border:1px solid #2a3b4e;border-radius:16px;padding:18px;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.big{font-size:27px;font-weight:800}.ok{color:#4ade80}.bad{color:#fb7185}.warn{color:#fbbf24}.muted{color:#94a3b8}.candidate{padding:12px 0;border-top:1px solid #253443;line-height:1.55}.tag{display:inline-block;padding:3px 7px;border-radius:8px;background:#1b2a39;margin:2px;font-size:12px}.position{margin:12px 0;padding:14px;border-radius:14px;border:1px solid #334155;background:#0d151e}.position.win{border-color:#16a34a;background:linear-gradient(90deg,rgba(22,163,74,.18),#0d151e)}.position.loss{border-color:#dc2626;background:linear-gradient(90deg,rgba(220,38,38,.18),#0d151e)}.position.flat{border-color:#64748b}.poshead{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:17px}.statepill{padding:5px 9px;border-radius:999px;font-weight:800;font-size:12px}.win .statepill{color:#4ade80;background:rgba(74,222,128,.12)}.loss .statepill{color:#fb7185;background:rgba(251,113,133,.12)}.flat .statepill{color:#cbd5e1;background:rgba(148,163,184,.12)}.posgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.posgrid>div{background:#111c27;border-radius:10px;padding:9px;font-size:12px;color:#94a3b8}.posgrid b{display:block;color:#f8fafc;font-size:14px;margin-top:3px}.win .posgrid div:nth-child(3),.win .posgrid div:nth-child(4){color:#4ade80}.loss .posgrid div:nth-child(3),.loss .posgrid div:nth-child(4){color:#fb7185}.pbar{height:10px;background:#1e293b;border-radius:999px;overflow:hidden;margin:10px 0}.pbar>div{height:100%;background:#4ade80;border-radius:999px}.loss .pbar>div{background:#fb7185}.flat .pbar>div{background:#94a3b8}.actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}.btn{border:0;border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer}.btn-close{background:#7f1d1d;color:#fff}.btn-all{background:#991b1b;color:#fff}@media(max-width:700px){.posgrid{grid-template-columns:repeat(2,1fr)}}</style></head><body>
-<h1>🌎 TIERRA · REAL-TIME MARKET INTELLIGENCE</h1><div class="card"><b>🟡 PAPER · Binance USD-M público · TODO EL MERCADO</b><br>Escanea todos los perpetuos USDT. BTC/ETH son contexto; las monedas pequeñas también pueden ser seleccionadas.<br><b>Lead/Lag + Spot/Futures + OI + Funding + Taker Flow + Order Book + Técnica</b><br><span class="muted">No ejecuta dinero real y no garantiza beneficios.</span></div><div id="app">Cargando…</div><script>
-function esc(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function closeOne(symbol){
-  if(!confirm('¿Cerrar '+symbol+'?')) return;
-  fetch('/api/positions/'+encodeURIComponent(symbol)+'/close',{method:'POST'}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error||'No se pudo cerrar');await load();}).catch(e=>alert(e.message));
-}
-function closeAll(){
-  const n=document.querySelectorAll('.position').length;
-  if(!n){alert('No hay posiciones abiertas.');return;}
-  if(!confirm('¿Cerrar TODAS las posiciones abiertas?')) return;
-  fetch('/api/positions/close-all',{method:'POST'}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error||'No se pudieron cerrar todas');await load();if(j.errors?.length)alert('Cerradas: '+j.closed.length+' · con error: '+j.errors.length);}).catch(e=>alert(e.message));
-}
-
-async function load(){try{const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),4000);const r=await fetch('/status',{cache:'no-store',signal:ctrl.signal});clearTimeout(timer);if(!r.ok)throw new Error('STATUS HTTP '+r.status);const s=await r.json();let h='<div class="grid">';h+='<div class="card"><div class="muted">ESTADO</div><div class="big">'+esc(s.status)+'</div><div>Scan '+s.scans+' · mercados '+s.dataMarkets+'/'+s.markets+' · '+s.scanMs+' ms</div></div>';h+='<div class="card"><div class="muted">EQUITY</div><div class="big">$'+Number(s.equity).toFixed(2)+'</div><div>Realizado $'+Number(s.realizedPnl).toFixed(2)+' · flotante $'+Number(s.floatingPnl).toFixed(2)+'</div></div>';h+='<div class="card"><div class="muted">BTC CONTEXTO</div><div>'+['1m','5m','15m','1h'].map(tf=>'<span class="tag">'+tf+': '+esc(s.marketContext?.[tf]||'—')+'</span>').join('')+'</div></div></div>';
-h+='<div class="card"><h2>Oportunidades detectadas en todo el mercado</h2>';if(!s.candidates.length)h+='<p class="warn">NO TRADE · no hay convergencia suficiente</p>';s.candidates.forEach(c=>{h+='<div class="candidate"><b>'+esc(c.symbol)+'</b> · <b>'+esc(c.side)+'</b> · EDGE <b>'+c.score+'</b> · '+esc(c.regime)+'<br>Tech '+c.techScore+' · Micro '+c.microScore+' · Lead/Lag '+c.leadLag+' · RSI '+Number(c.rsi).toFixed(1)+' · ADX '+Number(c.adx||0).toFixed(1)+' · RV '+Number(c.relVol||0).toFixed(2)+'x<br>OI Δ '+(c.oiDeltaPct==null?'—':c.oiDeltaPct+'%')+' · Funding '+(c.funding==null?'—':c.funding)+' · Basis '+(c.basisPct==null?'—':c.basisPct+'%')+' · Book '+(c.bookImbalance==null?'—':c.bookImbalance)+' · Taker '+(c.takerRatio==null?'—':c.takerRatio)+' · Spread '+(c.spreadBps==null?'—':c.spreadBps+' bps')+'<br><span class="muted">'+esc((c.reasons||[]).join(' · '))+'</span></div>'});h+='</div>';
-h+='<div class="card"><div class="actions"><button class="btn btn-all" onclick="closeAll()">✕ CERRAR TODAS</button></div><h2>Posiciones '+Object.keys(s.positions).length+'/4</h2>';const ps=Object.values(s.positions);if(!ps.length)h+='<p class="muted">Sin posiciones.</p>';ps.forEach(p=>{const gross=(p.side==='LONG'?(Number(p.markPrice||p.entry)-p.entry)*p.qty:(p.entry-Number(p.markPrice||p.entry))*p.qty);const estFees=p.allocation*0.0004;const net=gross-estFees;const pct=p.allocation?net/p.allocation*100:0;const cls=net>0.02?'win':net<-0.02?'loss':'flat';const label=net>0.02?'▲ GANANDO':net<-0.02?'▼ PERDIENDO':'● NEUTRAL';const width=Math.min(100,Math.max(0,50+pct*8));h+='<div class="position '+cls+'"><div class="poshead"><div><b>'+esc(p.symbol)+'</b> · <b>'+esc(p.side)+'</b></div><div style="display:flex;align-items:center;gap:8px"><div class="statepill">'+label+'</div><button class="btn btn-close" onclick="closeOne(\''+esc(p.symbol)+'\')">✕ CERRAR</button></div></div><div class="posgrid"><div>Entrada<br><b>'+Number(p.entry).toFixed(8)+'</b></div><div>Actual<br><b>'+Number(p.markPrice||p.entry).toFixed(8)+'</b></div><div>P&L neto<br><b>'+((net>=0?'+':'')+net.toFixed(2))+' USDT</b></div><div>Variación<br><b>'+((pct>=0?'+':'')+pct.toFixed(2))+'%</b></div></div><div class="pbar"><div style="width:'+width.toFixed(1)+'%"></div></div><div class="muted">SL '+Number(p.stop).toFixed(8)+' · TP '+Number(p.tp).toFixed(8)+' · '+esc((p.reasons||[]).join(' · '))+'</div></div>'});h+='</div>';
-h+='<div class="card"><b>Resultados:</b> '+s.stats.wins+' ganadoras · '+s.stats.losses+' perdedoras · LONG '+s.stats.long+' · SHORT '+s.stats.short+'<br><span class="muted">Último scan: '+esc(s.lastScan||'')+'</span></div>';document.getElementById('app').innerHTML=h}catch(e){document.getElementById('app').innerHTML='<div class="card bad"><b>Conexión con TIERRA:</b> '+esc(e.name==='AbortError'?'El servidor está ocupado analizando el mercado. Reintentando…':e.message)+'</div>'}}load();setInterval(load,3000);</script></body></html>`);
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TIERRA · REAL-TIME MARKET INTELLIGENCE</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#080d13;color:#edf2f7;margin:0;padding:18px}h1{font-size:30px}.card{background:#111a24;border:1px solid #2a3b4e;border-radius:16px;padding:18px;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.big{font-size:27px;font-weight:800}.bad{color:#fb7185}.warn{color:#fbbf24}.muted{color:#94a3b8}.candidate{padding:12px 0;border-top:1px solid #253443;line-height:1.55}.tag{display:inline-block;padding:3px 7px;border-radius:8px;background:#1b2a39;margin:2px;font-size:12px}.position{margin:12px 0;padding:14px;border-radius:14px;border:1px solid #334155;background:#0d151e}.position.win{border-color:#16a34a;background:linear-gradient(90deg,rgba(22,163,74,.18),#0d151e)}.position.loss{border-color:#dc2626;background:linear-gradient(90deg,rgba(220,38,38,.18),#0d151e)}.position.flat{border-color:#64748b}.poshead{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:17px}.statepill{padding:5px 9px;border-radius:999px;font-weight:800;font-size:12px}.win .statepill{color:#4ade80;background:rgba(74,222,128,.12)}.loss .statepill{color:#fb7185;background:rgba(251,113,133,.12)}.flat .statepill{color:#cbd5e1;background:rgba(148,163,184,.12)}.posgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.posgrid>div{background:#111c27;border-radius:10px;padding:9px;font-size:12px;color:#94a3b8}.posgrid b{display:block;color:#f8fafc;font-size:14px;margin-top:3px}.pbar{height:10px;background:#1e293b;border-radius:999px;overflow:hidden;margin:10px 0}.pbar>div{height:100%;background:#4ade80;border-radius:999px}.loss .pbar>div{background:#fb7185}.flat .pbar>div{background:#94a3b8}.actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}.btn{border:0;border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer}.btn-close{background:#7f1d1d;color:#fff}.btn-all{background:#991b1b;color:#fff}.btn:disabled{opacity:.5}@media(max-width:700px){.posgrid{grid-template-columns:repeat(2,1fr)}.poshead{align-items:flex-start}.poshead>div:last-child{display:flex;flex-direction:column;align-items:flex-end}}
+</style></head><body>
+<h1>🌎 TIERRA · REAL-TIME MARKET INTELLIGENCE</h1>
+<div class="card"><b>🟡 PAPER · Binance USD-M público · TODO EL MERCADO</b><br>Escanea todos los perpetuos USDT. BTC/ETH son contexto; las monedas pequeñas también pueden ser seleccionadas.<br><b>Lead/Lag + Spot/Futures + OI + Funding + Taker Flow + Order Book + Técnica</b><br><span class="muted">No ejecuta dinero real y no garantiza beneficios.</span></div>
+<div id="app"><div class="card">Conectando con TIERRA…</div></div>
+<script>
+(function(){
+  const app=document.getElementById('app');
+  function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+  function msg(t,cls){app.innerHTML='<div class="card '+(cls||'')+'">'+esc(t)+'</div>';}
+  async function getJSON(url,opts){
+    const ctrl=new AbortController();
+    const timer=setTimeout(function(){ctrl.abort();},5000);
+    try{const r=await fetch(url,Object.assign({cache:'no-store',headers:{'Accept':'application/json'}},opts||{}, {signal:ctrl.signal})); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json();}
+    finally{clearTimeout(timer);}
+  }
+  window.closeOne=async function(symbol){
+    if(!window.confirm('¿Cerrar '+symbol+'?')) return;
+    try{const j=await getJSON('/api/positions/'+encodeURIComponent(symbol)+'/close',{method:'POST'});if(!j.ok)throw new Error(j.error||'No se pudo cerrar');await load();}
+    catch(e){window.alert('No se pudo cerrar: '+e.message);}
+  };
+  window.closeAll=async function(){
+    if(!window.confirm('¿Cerrar TODAS las posiciones abiertas?')) return;
+    try{const j=await getJSON('/api/positions/close-all',{method:'POST'});if(!j.ok && !(j.closed&&j.closed.length))throw new Error(j.error||'No se pudieron cerrar');await load();if(j.errors&&j.errors.length)window.alert('Cerradas: '+j.closed.length+' · errores: '+j.errors.length);}
+    catch(e){window.alert('No se pudieron cerrar todas: '+e.message);}
+  };
+  function render(s){
+    let h='<div class="grid">';
+    h+='<div class="card"><div class="muted">ESTADO</div><div class="big">'+esc(s.status)+'</div><div>Scan '+Number(s.scans||0)+' · mercados '+Number(s.dataMarkets||0)+'/'+Number(s.markets||0)+' · '+Number(s.scanMs||0)+' ms</div></div>';
+    h+='<div class="card"><div class="muted">EQUITY</div><div class="big">$'+Number(s.equity||0).toFixed(2)+'</div><div>Realizado $'+Number(s.realizedPnl||0).toFixed(2)+' · flotante $'+Number(s.floatingPnl||0).toFixed(2)+'</div></div>';
+    h+='<div class="card"><div class="muted">BTC CONTEXTO</div><div>'+['1m','5m','15m','1h'].map(function(tf){return '<span class="tag">'+tf+': '+esc(s.marketContext&&s.marketContext[tf]||'—')+'</span>';}).join('')+'</div></div></div>';
+    h+='<div class="card"><h2>Oportunidades detectadas en todo el mercado</h2>';
+    const cs=Array.isArray(s.candidates)?s.candidates:[];
+    if(!cs.length)h+='<p class="warn">NO TRADE · no hay convergencia suficiente</p>';
+    cs.forEach(function(c){h+='<div class="candidate"><b>'+esc(c.symbol)+'</b> · <b>'+esc(c.side)+'</b> · EDGE <b>'+Number(c.score||0).toFixed(2)+'</b> · '+esc(c.regime)+'<br>Tech '+Number(c.techScore||0).toFixed(2)+' · Micro '+Number(c.microScore||0).toFixed(2)+' · Lead/Lag '+Number(c.leadLag||0).toFixed(2)+' · RSI '+Number(c.rsi||0).toFixed(1)+' · ADX '+Number(c.adx||0).toFixed(1)+' · RV '+Number(c.relVol||0).toFixed(2)+'x<br>OI Δ '+(c.oiDeltaPct==null?'—':c.oiDeltaPct+'%')+' · Funding '+(c.funding==null?'—':c.funding)+' · Basis '+(c.basisPct==null?'—':c.basisPct+'%')+' · Book '+(c.bookImbalance==null?'—':c.bookImbalance)+' · Taker '+(c.takerRatio==null?'—':c.takerRatio)+' · Spread '+(c.spreadBps==null?'—':c.spreadBps+' bps')+'<br><span class="muted">'+esc((c.reasons||[]).join(' · '))+'</span></div>';});
+    h+='</div>';
+    const ps=Object.values(s.positions||{});
+    h+='<div class="card"><div class="actions"><button class="btn btn-all" onclick="closeAll()">✕ CERRAR TODAS</button></div><h2>Posiciones '+ps.length+'/4</h2>';
+    if(!ps.length)h+='<p class="muted">Sin posiciones.</p>';
+    ps.forEach(function(p){
+      const mark=Number(p.markPrice||p.entry); const gross=p.side==='LONG'?(mark-p.entry)*p.qty:(p.entry-mark)*p.qty; const fees=Number(p.allocation||0)*0.0004; const net=gross-fees; const pct=p.allocation?net/p.allocation*100:0; const cls=net>0.02?'win':net<-0.02?'loss':'flat'; const label=net>0.02?'▲ GANANDO':net<-0.02?'▼ PERDIENDO':'● NEUTRAL'; const width=Math.min(100,Math.max(0,50+pct*8));
+      h+='<div class="position '+cls+'"><div class="poshead"><div><b>'+esc(p.symbol)+'</b> · <b>'+esc(p.side)+'</b></div><div><span class="statepill">'+label+'</span> <button class="btn btn-close" onclick="closeOne(\''+esc(p.symbol)+'\')">✕ CERRAR</button></div></div><div class="posgrid"><div>Entrada<br><b>'+Number(p.entry).toFixed(8)+'</b></div><div>Actual<br><b>'+mark.toFixed(8)+'</b></div><div>P&L neto<br><b>'+((net>=0?'+':'')+net.toFixed(2))+' USDT</b></div><div>Variación<br><b>'+((pct>=0?'+':'')+pct.toFixed(2))+'%</b></div></div><div class="pbar"><div style="width:'+width.toFixed(1)+'%"></div></div><div class="muted">SL '+Number(p.stop).toFixed(8)+' · TP '+Number(p.tp).toFixed(8)+' · '+esc((p.reasons||[]).join(' · '))+'</div></div>';
+    });
+    h+='</div><div class="card"><b>Resultados:</b> '+Number(s.stats&&s.stats.wins||0)+' ganadoras · '+Number(s.stats&&s.stats.losses||0)+' perdedoras · LONG '+Number(s.stats&&s.stats.long||0)+' · SHORT '+Number(s.stats&&s.stats.short||0)+'<br><span class="muted">Último scan: '+esc(s.lastScan||'')+'</span></div>';
+    app.innerHTML=h;
+  }
+  async function load(){
+    try{
+      const h=await getJSON('/health');
+      if(!h.ok) throw new Error('Servidor no disponible');
+      const s=await getJSON('/status');
+      render(s);
+    }catch(e){
+      msg(e.name==='AbortError'?'TIERRA está procesando el mercado. Reintentando…':'Conexión con TIERRA: '+e.message,'bad');
+    }
+  }
+  load();
+  setInterval(load,5000);
+})();
+</script></body></html>`);
 });
 
 app.listen(PORT,"0.0.0.0",()=>{
