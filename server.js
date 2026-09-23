@@ -510,14 +510,20 @@ async function scan() {
   }
 }
 
+function sendState(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.json(state);
+}
+
+// Single lightweight endpoint for the dashboard. It never waits for a scan.
+app.get("/api/state", (_q, res) => sendState(res));
 app.get("/health", (_q, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.json({ ok: true, status: state.status, version: state.version, scanRunning: state.scanRunning, scans: state.scans });
 });
-app.get("/status", (_q, res) => {
-  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.json(state);
-});
+app.get("/status", (_q, res) => sendState(res));
 
 app.post("/api/positions/:symbol/close", async (req, res) => {
   const symbol = String(req.params.symbol || "").toUpperCase();
@@ -604,9 +610,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;back
   }
   async function load(){
     try{
-      const h=await getJSON('/health');
-      if(!h.ok) throw new Error('Servidor no disponible');
-      const s=await getJSON('/status');
+      // One request only: /api/state is intentionally independent of the scan loop.
+      const s=await getJSON('/api/state');
+      if(!s || !s.version) throw new Error('Estado no disponible');
       render(s);
     }catch(e){
       msg(e.name==='AbortError'?'TIERRA está procesando el mercado. Reintentando…':'Conexión con TIERRA: '+e.message,'bad');
