@@ -1,40 +1,25 @@
-# TIERRA — Real-Time Market Intelligence
+# TIERRA 1.1 — Real-Time Market Intelligence
 
-Bot PAPER para Binance USD-M Futures. Escanea el mercado USDT y mantiene posiciones simuladas.
+PAPER-only Binance USD-M market scanner/trader. Uses public Binance market data and does not place real orders.
 
-## Cambio de esta versión
+## Included controls
+- Manual **CERRAR** button on every open position.
+- **CERRAR TODAS** button to close every open PAPER position at a fresh Binance ticker price.
+- Manual closes are recorded as realized P&L and the symbol enters cooldown.
+- After closing all positions, entries are paused briefly so TIERRA does not immediately refill the book in the same cycle.
+- Existing SL/TP, regime-flip and max-hold exits remain active.
 
-Cada posición tiene un botón **✕ CERRAR** en su propia ventana.
-
-- El cierre manual usa el precio en vivo de Binance.
-- Calcula P&L y comisiones simuladas.
-- Registra el motivo `MANUAL_BUTTON`.
-- Libera inmediatamente el slot de la posición.
-- La moneda entra en cooldown para evitar una reapertura inmediata.
-- El bot continúa buscando oportunidades en el siguiente ciclo.
-- Se eliminó la regla automática de cierre por pérdida a los 30 segundos; el usuario decide cuándo cerrar manualmente, mientras SL/TP/cambio de régimen/tiempo máximo siguen activos.
-
-## Seguridad
-
-- **PAPER solamente**.
-- No utiliza API keys de Binance.
-- No coloca órdenes reales.
-- No garantiza beneficios.
-
-## Instalación
-
+## Run
 ```bash
 npm install
 npm start
 ```
 
-Variables opcionales:
+Railway provides `PORT` automatically. Optional variables:
+- `INITIAL_CAPITAL` (default 10000)
+- `PAPER_FEE_RATE` (default 0.0004)
+- `PAPER_SLIPPAGE_BPS` (default 3)
 
-- `PORT` — puerto HTTP.
-- `INITIAL_CAPITAL` — capital PAPER inicial; por defecto `10000`.
-- `PAPER_FEE_RATE` — comisión simulada; por defecto `0.0004`.
-- `PAPER_SLIPPAGE_BPS` — slippage simulado; por defecto `3` bps.
+No Binance API keys are required for PAPER mode because the bot uses public market data only.
 
-## Interfaz
-
-Cada tarjeta de posición muestra entrada, precio actual, P&L, variación, barra visual y los botones de estado/cierre. Verde = positivo, rojo = negativo y gris = neutral.
+This software is an experimental paper-trading system. PAPER results are not a guarantee of live profitability.
