@@ -1,15 +1,40 @@
-# TIERRA 1.2.0
+# TIERRA — Real-Time Market Intelligence
 
-PAPER-only Binance USD-M market intelligence bot. This build keeps the original TIERRA scanning/analysis engine and adds manual position controls.
+Bot PAPER para Binance USD-M Futures. Escanea el mercado USDT y mantiene posiciones simuladas.
 
-## Controls
-- `CERRAR` closes one position at the current public Binance Futures price.
-- `CERRAR TODAS` closes all open PAPER positions and pauses new entries briefly.
+## Cambio de esta versión
 
-## Run
+Cada posición tiene un botón **✕ CERRAR** en su propia ventana.
+
+- El cierre manual usa el precio en vivo de Binance.
+- Calcula P&L y comisiones simuladas.
+- Registra el motivo `MANUAL_BUTTON`.
+- Libera inmediatamente el slot de la posición.
+- La moneda entra en cooldown para evitar una reapertura inmediata.
+- El bot continúa buscando oportunidades en el siguiente ciclo.
+- Se eliminó la regla automática de cierre por pérdida a los 30 segundos; el usuario decide cuándo cerrar manualmente, mientras SL/TP/cambio de régimen/tiempo máximo siguen activos.
+
+## Seguridad
+
+- **PAPER solamente**.
+- No utiliza API keys de Binance.
+- No coloca órdenes reales.
+- No garantiza beneficios.
+
+## Instalación
+
 ```bash
 npm install
 npm start
 ```
 
-No Binance API keys are required because this build is PAPER and uses public market data only. It does not place real orders and does not guarantee profits.
+Variables opcionales:
+
+- `PORT` — puerto HTTP.
+- `INITIAL_CAPITAL` — capital PAPER inicial; por defecto `10000`.
+- `PAPER_FEE_RATE` — comisión simulada; por defecto `0.0004`.
+- `PAPER_SLIPPAGE_BPS` — slippage simulado; por defecto `3` bps.
+
+## Interfaz
+
+Cada tarjeta de posición muestra entrada, precio actual, P&L, variación, barra visual y los botones de estado/cierre. Verde = positivo, rojo = negativo y gris = neutral.
